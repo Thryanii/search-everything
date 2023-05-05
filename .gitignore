@@ -1,6 +1,4 @@
 /node_modules
-/s.thml
 /tempCodeRunnerFile.js
 /test.js
-/text.html
-baike.html
+*.html

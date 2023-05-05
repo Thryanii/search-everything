@@ -3,6 +3,12 @@ const util = require('./src/util');
 const httpGet = require('./src/httpGet');
 const stringSimilarity = require('string-similarity');
 
+/**
+ * @typedef {Object} ResultItem
+ * @property {string} title 条目标题
+ * @property {string} link 条目链接
+ * @property {string} description 条目摘要
+ */
 
 const moegirlPageParser = (html) => {
     const $ = cheerio.load(html)
@@ -43,8 +49,7 @@ const moegirlPageParser = (html) => {
  */
 const moegirl = async (search, then) => {
     try {
-        let res = await httpGet(`https://zh.moegirl.org.cn/index.php?title=Special:%E6%90%9C%E7%B4%A2&variant=Special%3ASearch&search=${search}`)
-        //util.writeFile("text.html", res)
+        let res = await httpGet.normal(`https://zh.moegirl.org.cn/index.php?title=Special:%E6%90%9C%E7%B4%A2&variant=Special%3ASearch&search=${encodeURI(search)}`)
         const $ = cheerio.load(res)
         if (res.includes("找不到和查询相匹配的结果")) {
             return { description: "", mainPage: false }
@@ -57,14 +62,14 @@ const moegirl = async (search, then) => {
             let title = first.find('a').attr('title');
             let href = first.find('a').attr('href');
             let content = first.find('.searchresult').text();
-            let page = await httpGet(`https://zh.moegirl.org.cn${href}`)
+            let page = await httpGet.normal(`https://zh.moegirl.org.cn${href}`)
             return { description: moegirlPageParser(page), page: false }
         } else {
             return { description: moegirlPageParser(res), page: true }
         }
     }
     catch (err) {
-        console.log(err)
+        //console.log(err)
     }
 }
 
@@ -73,7 +78,7 @@ const moegirl = async (search, then) => {
 /**
  * 必应搜索(可能无搜索结果)
  * @param {string} search - 搜索内容
- * @returns {Promise<{title:string,link:string,description:string}[]>} 
+ * @returns {Promise<ResultItem[]>} 
  */
 const bing = async (search) => {
     let options = {
@@ -85,7 +90,7 @@ const bing = async (search) => {
             'Accept-Language': 'zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2',
         }
     }
-    let ret = await httpGet(`https://cn.bing.com/search?q=${search.replace(/\s+/, '+')}`, options)
+    let ret = await httpGet.normal(`https://cn.bing.com/search?q=${encodeURI(search.replace(/\s+/, '+'))}`, options)
     const results = [];
     if (ret.includes("没有与此相关的结果")) return results
     const $ = cheerio.load(ret);
@@ -107,25 +112,24 @@ const bing = async (search) => {
 /**
  * 今日头条百科(这b东西搜出来一堆无关东西)
  * @param {string} search - 搜索内容
- * @returns {Promise<{title:string,similar:boolean,description:string}[]>} 百科搜索结果(数组)
+ * @returns {Promise<ResultItem[]>} 百科搜索结果(数组)
  */
 const baike = async (search) => {
     let results = []
     try {
-        let ret = await httpGet(`https://www.baike.com/search?keyword=${search}`)
+        let ret = await httpGet.normal(`https://www.baike.com/search?keyword=${encodeURI(search)}`)
         //util.writeFile('baike.html', ret)
         let $ = cheerio.load(ret)
         let wiki = $('body').find('script').first().text().replace(/var DATA =\s+{\s+data:/, '').replace(/\\u003c\/*em>/g, '').trim()
         let wikiDocList = JSON.parse(wiki.slice(0, wiki.length - 1)).WikiDocList
-        //console.log(wikiDocList)
         wikiDocList.some(element => {
             let titleSimilarity = stringSimilarity.compareTwoStrings(element.Title, search)
-            let similar = titleSimilarity > 0.7
-            results.push({
-                title: element.Title,
-                similar: similar,
-                description: element.Abstract
-            })
+            if (titleSimilarity > 0.7)
+                results.push({
+                    title: element.Title,
+                    link: 'https://www.baike.com/wikiid/' + element.WikiDocID,
+                    description: element.Abstract
+                })
             if (results.length >= 3) return true
         })
         return results
@@ -138,18 +142,18 @@ const baike = async (search) => {
 /**
  * bilibili(这b玩意儿还要cookies)
  * @param {string} search - 搜索内容
- * @returns {Promise<{title:string,link:boolean,description:string}[]>} 视频列表
+ * @returns {Promise<ResultItem[]>} 视频列表
  */
 const bilibili = async (search) => {
     let results = []
     try {
         let cookies = await httpGet.withCookies(`https://bilibili.com/`, {}, true)
-        let ret = await httpGet.normal(`https://api.bilibili.com/x/web-interface/search/type?&page=1&search_type=video&keyword=${search}`, undefined, cookies)
+        let ret = await httpGet.normal(`https://api.bilibili.com/x/web-interface/search/type?&page=1&search_type=video&keyword=${encodeURI(search)}`, undefined, cookies)
         ret = JSON.parse(ret.slice(0, ret.length - 1)).data
         if (ret.numResults == 0) return results //没有结果
         ret.result.forEach(element => {
             results.push({
-                title: element.title.replace(/<em class="keyword">|<\/em>/g,''),
+                title: element.title.replace(/<em class="keyword">|<\/em>/g, ''),
                 link: 'https://b23.tv/' + element.bvid,
                 description: element.description
             })

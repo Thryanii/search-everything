@@ -1,23 +1,25 @@
 const request = require('request');
 
 const normal = (url, options, cookies) => {
+    console.log(url)
     return new Promise((resolve, reject) => {
         let defaultOptions = {
             headers: {
                 "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36 Edg/112.0.1722.68"
             }
         }
-        options = options || defaultOptions
-        if (cookies != undefined) options.headers['Cookie'] = cookies
-        request.get(encodeURI(url), options, (error, response, body) => {
+        if (cookies != undefined) { 
+            options = options || defaultOptions
+            options.headers['Cookie'] = cookies
+        }
+        request.get(url, options, (error, response, body) => {
             if (error) {
                 reject(error)
             } else if (response.statusCode !== 200) {
                 reject(response)
+                console.log(body)
             } else {
-                cookies = cookies || false
-                if (cookies) resolve([body, response.headers['set-cookie']])
-                else resolve(body)
+                resolve(body)
             }
         });
     });
@@ -43,4 +45,4 @@ const withCookies = (url, options) => {
     });
 }
 
-module.exports = {normal,withCookies}
+module.exports = { normal, withCookies }
