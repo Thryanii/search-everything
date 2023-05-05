@@ -1,6 +1,6 @@
 const request = require('request');
 const cheerio = require('cheerio');
-const util = require('./util');
+//const util = require('./util');
 const stringSimilarity = require('string-similarity');
 
 const MoegirlSearch = (search) => {
@@ -35,6 +35,8 @@ const MoegirlPage = (page) => {
 
 const moegirlPageParser = (html) => {
     const $ = cheerio.load(html)
+    $('script').remove()
+    $('style').remove()
     let description = ""
     //若基本资料内容少，则搜索文章一部分p标签
     let lastElement
@@ -66,32 +68,32 @@ const moegirlPageParser = (html) => {
 /**
  * 萌娘百科(可能无搜索结果)
  * @param {number} search - 搜索内容
- * @returns {{result:boolean,mainPage:boolean,description:string}} mainPage:是否经过重定向
+ * @returns {Promise<{description:string,page:boolean}>} page:是否经过重定向
  */
-const moegirl = async (search) => {
+const moegirl = async (search, then) => {
     try {
         let res = await MoegirlSearch(encodeURI(search))
-        util.writeFile("text.html", res)
+        //util.writeFile("text.html", res)
         const $ = cheerio.load(res)
         if (res.includes("找不到和查询相匹配的结果")) {
-            return { result: false }
+            return { description: "", mainPage: false }
         }
         if ($('ul').hasClass('mw-search-results')) {
             if ($('ul.mw-search-results').find('li').length <= 3) {
-                return { result: false }
+                return { description: "", mainPage: false }
             }
             let first = $('ul.mw-search-results').find('li')
             let title = first.find('a').attr('title');
             let href = first.find('a').attr('href');
             let content = first.find('.searchresult').text();
             let page = await MoegirlPage(href)
-            return { result: true, mainPage: false, description: moegirlPageParser(page) }
+            return { description: moegirlPageParser(page), page: false }
         } else {
-            return { result: true, mainPage: true, description: moegirlPageParser(res) }
+            return { description: moegirlPageParser(res), page: true }
         }
     }
     catch (err) {
-        return err
+        console.log(err)
     }
 }
 
@@ -120,10 +122,9 @@ const BingSearch = async (question) => await new Promise((resolve, reject) => {
 /**
  * 必应搜索(可能无搜索结果)
  * @param {number} search - 搜索内容
- * @returns {{result:boolean,data:{title:string,link:string,description:string}[]}} result:是否有搜索结果
+ * @returns {Promise<{title:string,link:string,description:string}[]>} result:是否有搜索结果
  */
 const bing = async (search) => {
-    let noResult = false
     let ret = await BingSearch(encodeURI(search.replace(/\s+/, '+')))
         .then(res => {
             return res
@@ -131,22 +132,20 @@ const bing = async (search) => {
         .catch(err => {
             return err
         })
-    if (ret.includes("没有与此相关的结果")) noResult = true
-    const $ = cheerio.load(ret);
     const results = [];
-    $('.b_algo').each((index, element) => {
+    if (ret.includes("没有与此相关的结果")) return results
+    const $ = cheerio.load(ret);
+    $('.b_algo').each((_index, element) => {
         const title = $(element).find('h2').text().trim();
         const link = $(element).find('a').attr('href').trim();
         const description = $(element).find('.b_caption p').text().replace(/(\d+年)?\d+月\d+日/, '').replace("网页", '').trim();
-
         results.push({
             title,
             link,
             description
         });
     });
-    if (results.length < 3 || noResult) return { result: flase }
-    else return { result: true, data: results }
+    return results
 }
 
 const baikeSearch = (question) => new Promise((resolve, reject) => {
@@ -168,13 +167,13 @@ const baikeSearch = (question) => new Promise((resolve, reject) => {
 /**
  * 今日头条百科(这b东西一定搜得出东西)
  * @param {number} search - 搜索内容
- * @returns {{result:boolean,data:{title:string,similar:boolean,description:string}[]}} result一定为true
+ * @returns {Promise<{title:string,similar:boolean,description:string}[]>} result一定为true
  */
 const baike = async (search) => {
     let results = []
     try {
         let ret = await baikeSearch(encodeURI(search))
-        util.writeFile('baike.html', ret)
+        //util.writeFile('baike.html', ret)
         let $ = cheerio.load(ret)
         let wiki = $('body').find('script').first().text().replace(/var DATA =\s+{\s+data:/, '').replace(/\\u003c\/*em>/g, '').trim()
         let wikiDocList = JSON.parse(wiki.slice(0, wiki.length - 1)).WikiDocList
@@ -189,7 +188,7 @@ const baike = async (search) => {
             })
             if (results.length >= 3) return true
         })
-        return { result: true, data: results }
+        return results
     } catch (err) {
         console.log(err)
     }
