@@ -17,3 +17,9 @@ search.moegirl('萝莉').then(res => {
     console.log(res.description)
 })
 ```
+
+# 支持的接口
+- bing
+- baike
+- moegirl
+- bilibili

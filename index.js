@@ -1,37 +1,8 @@
-const request = require('request');
 const cheerio = require('cheerio');
-//const util = require('./util');
+const util = require('./src/util');
+const httpGet = require('./src/httpGet');
 const stringSimilarity = require('string-similarity');
 
-const MoegirlSearch = (search) => {
-    return new Promise((resolve, reject) => {
-        const url = `https://zh.moegirl.org.cn/index.php?title=Special:%E6%90%9C%E7%B4%A2&variant=Special%3ASearch&search=${search}`;
-        request.get(url, (error, response, body) => {
-            if (error) {
-                reject(error);
-            } else if (response.statusCode !== 200) {
-                reject(new Error(`请求失败，状态码为 ${response.statusCode}`));
-            } else {
-                resolve(body);
-            }
-        });
-    });
-}
-
-const MoegirlPage = (page) => {
-    return new Promise((resolve, reject) => {
-        const url = `https://zh.moegirl.org.cn${page}`;
-        request.get(url, (error, response, body) => {
-            if (error) {
-                reject(error);
-            } else if (response.statusCode !== 200) {
-                reject(new Error(`请求失败，状态码为 ${response.statusCode}`));
-            } else {
-                resolve(body);
-            }
-        });
-    });
-}
 
 const moegirlPageParser = (html) => {
     const $ = cheerio.load(html)
@@ -67,12 +38,12 @@ const moegirlPageParser = (html) => {
 // 3.没有或少量搜索结果
 /**
  * 萌娘百科(可能无搜索结果)
- * @param {number} search - 搜索内容
- * @returns {Promise<{description:string,page:boolean}>} page:是否经过重定向
+ * @param {string} search - 搜索内容
+ * @returns {Promise<{description:string,page:boolean}>} 页面文本
  */
 const moegirl = async (search, then) => {
     try {
-        let res = await MoegirlSearch(encodeURI(search))
+        let res = await httpGet(`https://zh.moegirl.org.cn/index.php?title=Special:%E6%90%9C%E7%B4%A2&variant=Special%3ASearch&search=${search}`)
         //util.writeFile("text.html", res)
         const $ = cheerio.load(res)
         if (res.includes("找不到和查询相匹配的结果")) {
@@ -86,7 +57,7 @@ const moegirl = async (search, then) => {
             let title = first.find('a').attr('title');
             let href = first.find('a').attr('href');
             let content = first.find('.searchresult').text();
-            let page = await MoegirlPage(href)
+            let page = await httpGet(`https://zh.moegirl.org.cn${href}`)
             return { description: moegirlPageParser(page), page: false }
         } else {
             return { description: moegirlPageParser(res), page: true }
@@ -97,10 +68,14 @@ const moegirl = async (search, then) => {
     }
 }
 
+
+
 /**
-* @type {function (string): Promise<string>} 
-*/
-const BingSearch = async (question) => await new Promise((resolve, reject) => {
+ * 必应搜索(可能无搜索结果)
+ * @param {string} search - 搜索内容
+ * @returns {Promise<{title:string,link:string,description:string}[]>} 
+ */
+const bing = async (search) => {
     let options = {
         method: "GET",
         headers: {
@@ -110,28 +85,7 @@ const BingSearch = async (question) => await new Promise((resolve, reject) => {
             'Accept-Language': 'zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2',
         }
     }
-    request("https://cn.bing.com/search?q=" + question, options, (err, res, body) => {
-        if (err) {
-            reject(err)
-        } else {
-            resolve(body)
-        }
-    })
-})
-
-/**
- * 必应搜索(可能无搜索结果)
- * @param {number} search - 搜索内容
- * @returns {Promise<{title:string,link:string,description:string}[]>} result:是否有搜索结果
- */
-const bing = async (search) => {
-    let ret = await BingSearch(encodeURI(search.replace(/\s+/, '+')))
-        .then(res => {
-            return res
-        })
-        .catch(err => {
-            return err
-        })
+    let ret = await httpGet(`https://cn.bing.com/search?q=${search.replace(/\s+/, '+')}`, options)
     const results = [];
     if (ret.includes("没有与此相关的结果")) return results
     const $ = cheerio.load(ret);
@@ -148,31 +102,17 @@ const bing = async (search) => {
     return results
 }
 
-const baikeSearch = (question) => new Promise((resolve, reject) => {
-    let options = {
-        method: "GET",
-        headers: {
-        }
-    }
-    request("https://www.baike.com/search?keyword=" + question, options, (err, res, body) => {
-        if (err) {
-            reject(err)
-        } else {
-            resolve(body)
-        }
-    })
-})
 
 
 /**
- * 今日头条百科(这b东西一定搜得出东西)
- * @param {number} search - 搜索内容
- * @returns {Promise<{title:string,similar:boolean,description:string}[]>} result一定为true
+ * 今日头条百科(这b东西搜出来一堆无关东西)
+ * @param {string} search - 搜索内容
+ * @returns {Promise<{title:string,similar:boolean,description:string}[]>} 百科搜索结果(数组)
  */
 const baike = async (search) => {
     let results = []
     try {
-        let ret = await baikeSearch(encodeURI(search))
+        let ret = await httpGet(`https://www.baike.com/search?keyword=${search}`)
         //util.writeFile('baike.html', ret)
         let $ = cheerio.load(ret)
         let wiki = $('body').find('script').first().text().replace(/var DATA =\s+{\s+data:/, '').replace(/\\u003c\/*em>/g, '').trim()
@@ -194,4 +134,33 @@ const baike = async (search) => {
     }
 }
 
-module.exports = { moegirl, bing, baike }
+
+/**
+ * bilibili(这b玩意儿还要cookies)
+ * @param {string} search - 搜索内容
+ * @returns {Promise<{title:string,link:boolean,description:string}[]>} 视频列表
+ */
+const bilibili = async (search) => {
+    let results = []
+    try {
+        let cookies = await httpGet.withCookies(`https://bilibili.com/`, {}, true)
+        let ret = await httpGet.normal(`https://api.bilibili.com/x/web-interface/search/type?&page=1&search_type=video&keyword=${search}`, undefined, cookies)
+        ret = JSON.parse(ret.slice(0, ret.length - 1)).data
+        if (ret.numResults == 0) return results //没有结果
+        ret.result.forEach(element => {
+            results.push({
+                title: element.title.replace(/<em class="keyword">|<\/em>/g,''),
+                link: 'https://b23.tv/' + element.bvid,
+                description: element.description
+            })
+        })
+        return results
+    } catch (err) {
+        if (err.statusCode == 412) {
+            console.log("bilibili请求被拦截")
+        }
+        else console.log(err)
+    }
+}
+
+module.exports = { moegirl, bing, baike, bilibili }
