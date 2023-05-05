@@ -1,6 +1,6 @@
 # search-everything
 
-针对各论坛,百科,搜索引擎的搜索结果获取和内容摘要
+针对各论坛,百科,搜索引擎的搜索结果获取或内容摘要
 
 # Installing
 
@@ -14,7 +14,11 @@ npm i search-everything
 const search = require('search-everything')
 
 search.moegirl('萝莉').then(res => {
-    console.log(res.description)
+    console.log(res)
+})
+
+search.baike('丁真').then(res => {
+    console.log(res)
 })
 ```
 

@@ -14,6 +14,8 @@ const moegirlPageParser = (html) => {
     const $ = cheerio.load(html)
     $('script').remove()
     $('style').remove()
+    let title = $('title').text()
+    let link = $('link[rel="canonical"]').attr('href');
     let description = ""
     //若基本资料内容少，则搜索文章一部分p标签
     let lastElement
@@ -29,7 +31,7 @@ const moegirlPageParser = (html) => {
             if (description.length > 400) return false
         })
     }
-    return description
+    return { title, link, description }
 }
 // ----------------------------------------------------------------
 // 目录
@@ -45,27 +47,28 @@ const moegirlPageParser = (html) => {
 /**
  * 萌娘百科(可能无搜索结果)
  * @param {string} search - 搜索内容
- * @returns {Promise<{description:string,page:boolean}>} 页面文本
+ * @returns {Promise<{data:ResultItem, page:boolean}>} 页面文本
  */
 const moegirl = async (search, then) => {
     try {
         let res = await httpGet.normal(`https://zh.moegirl.org.cn/index.php?title=Special:%E6%90%9C%E7%B4%A2&variant=Special%3ASearch&search=${encodeURI(search)}`)
         const $ = cheerio.load(res)
         if (res.includes("找不到和查询相匹配的结果")) {
-            return { description: "", mainPage: false }
+            return { description: "", oage: false }
         }
         if ($('ul').hasClass('mw-search-results')) {
             if ($('ul.mw-search-results').find('li').length <= 3) {
-                return { description: "", mainPage: false }
+                return { description: "", page: false }
             }
             let first = $('ul.mw-search-results').find('li')
-            let title = first.find('a').attr('title');
+            //let title = first.find('a').attr('title');
+            //let content = first.find('.searchresult').text();
             let href = first.find('a').attr('href');
-            let content = first.find('.searchresult').text();
             let page = await httpGet.normal(`https://zh.moegirl.org.cn${href}`)
-            return { description: moegirlPageParser(page), page: false }
+            util.writeFile('test.html', page)
+            return { data: moegirlPageParser(page), page: false }
         } else {
-            return { description: moegirlPageParser(res), page: true }
+            return { data: moegirlPageParser(res), page: true }
         }
     }
     catch (err) {
@@ -122,15 +125,14 @@ const baike = async (search) => {
         let $ = cheerio.load(ret)
         let wiki = $('body').find('script').first().text().replace(/var DATA =\s+{\s+data:/, '').replace(/\\u003c\/*em>/g, '').trim()
         let wikiDocList = JSON.parse(wiki.slice(0, wiki.length - 1)).WikiDocList
-        wikiDocList.some(element => {
+        wikiDocList.forEach(element => {
             let titleSimilarity = stringSimilarity.compareTwoStrings(element.Title, search)
-            if (titleSimilarity > 0.7)
+            if (titleSimilarity > 0.5)
                 results.push({
                     title: element.Title,
                     link: 'https://www.baike.com/wikiid/' + element.WikiDocID,
                     description: element.Abstract
                 })
-            if (results.length >= 3) return true
         })
         return results
     } catch (err) {

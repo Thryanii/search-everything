@@ -1,7 +1,6 @@
 const request = require('request');
 
 const normal = (url, options, cookies) => {
-    console.log(url)
     return new Promise((resolve, reject) => {
         let defaultOptions = {
             headers: {
@@ -17,7 +16,6 @@ const normal = (url, options, cookies) => {
                 reject(error)
             } else if (response.statusCode !== 200) {
                 reject(response)
-                console.log(body)
             } else {
                 resolve(body)
             }
