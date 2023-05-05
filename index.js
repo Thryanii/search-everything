@@ -1,6 +1,7 @@
 const request = require('request');
 const cheerio = require('cheerio');
 const util = require('./util');
+const stringSimilarity = require('string-similarity');
 
 const MoegirlSearch = (search) => {
     return new Promise((resolve, reject) => {
@@ -62,6 +63,11 @@ const moegirlPageParser = (html) => {
 // 1.存在相关主页,跳转到页面
 // 2.不存在相关主页,返回搜索列表,自动重定向至第一个页面
 // 3.没有或少量搜索结果
+/**
+ * 萌娘百科(可能无搜索结果)
+ * @param {number} search - 搜索内容
+ * @returns {{result:boolean,mainPage:boolean,description:string}} mainPage:是否经过重定向
+ */
 const moegirl = async (search) => {
     try {
         let res = await MoegirlSearch(encodeURI(search))
@@ -111,6 +117,11 @@ const BingSearch = async (question) => await new Promise((resolve, reject) => {
     })
 })
 
+/**
+ * 必应搜索(可能无搜索结果)
+ * @param {number} search - 搜索内容
+ * @returns {{result:boolean,data:{title:string,link:string,description:string}[]}} result:是否有搜索结果
+ */
 const bing = async (search) => {
     let noResult = false
     let ret = await BingSearch(encodeURI(search.replace(/\s+/, '+')))
@@ -138,4 +149,50 @@ const bing = async (search) => {
     else return { result: true, data: results }
 }
 
-module.exports = { moegirl, bing }
+const baikeSearch = (question) => new Promise((resolve, reject) => {
+    let options = {
+        method: "GET",
+        headers: {
+        }
+    }
+    request("https://www.baike.com/search?keyword=" + question, options, (err, res, body) => {
+        if (err) {
+            reject(err)
+        } else {
+            resolve(body)
+        }
+    })
+})
+
+
+/**
+ * 今日头条百科(这b东西一定搜得出东西)
+ * @param {number} search - 搜索内容
+ * @returns {{result:boolean,data:{title:string,similar:boolean,description:string}[]}} result一定为true
+ */
+const baike = async (search) => {
+    let results = []
+    try {
+        let ret = await baikeSearch(encodeURI(search))
+        util.writeFile('baike.html', ret)
+        let $ = cheerio.load(ret)
+        let wiki = $('body').find('script').first().text().replace(/var DATA =\s+{\s+data:/, '').replace(/\\u003c\/*em>/g, '').trim()
+        let wikiDocList = JSON.parse(wiki.slice(0, wiki.length - 1)).WikiDocList
+        //console.log(wikiDocList)
+        wikiDocList.some(element => {
+            let titleSimilarity = stringSimilarity.compareTwoStrings(element.Title, search)
+            let similar = titleSimilarity > 0.7
+            results.push({
+                title: element.Title,
+                similar: similar,
+                description: element.Abstract
+            })
+            if (results.length >= 3) return true
+        })
+        return { result: true, data: results }
+    } catch (err) {
+        console.log(err)
+    }
+}
+
+module.exports = { moegirl, bing, baike }
