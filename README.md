@@ -11,13 +11,22 @@ npm i search-everything
 # Usage
 
 ```js
-const search = require('search-everything')
+const { search, page } = require('search-everything')
 
 search.moegirl('萝莉').then(res => {
     console.log(res)
 })
 
 search.baike('丁真').then(res => {
+    console.log(res)
+})
+
+search.zhihu('chatgpt').then(res => {
+    if(res.length > 0) {
+        //page用于解析页面摘要
+        return page.zhihu(res[0].link)
+    }
+}).then(res => { 
     console.log(res)
 })
 ```
@@ -27,3 +36,5 @@ search.baike('丁真').then(res => {
 - baike
 - moegirl
 - bilibili
+- zhihu
+- weibo
